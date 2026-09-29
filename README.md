@@ -14,6 +14,9 @@ A Windows desktop application for searching album releases in MusicBrainz, downl
 - Prepare output with 300 DPI metadata for printing.
 - Track resolution, DPI, quality, and visual duplicates.
 - Browse the local cover collection.
+- Select covers from the collection and export one cover per PDF page.
+- Export print PDFs as A4 or A3 with RGB, CMYK, or grayscale output, selectable DPI,
+  lossless image output, JPEG output, and configurable bleed.
 - Use output presets for posters, master files, digital covers, and vinyl.
 
 ## Requirements
@@ -103,6 +106,20 @@ The application preserves the aspect ratio and does not crop or distort images. 
 - target: `4000 x 4000 px`.
 
 Non-square artwork keeps its original proportions and may not end at exactly `4000x4000` pixels.
+
+To create a printable PDF from the local collection:
+
+1. Open the `Collection` tab and select one or more covers with `Ctrl` or `Shift`.
+2. Click `Generate PDF`.
+3. Choose A4 or A3, color format, resolution, compression, and bleed.
+4. Save the PDF. Each selected cover becomes one page and is fitted to the full page
+	width without distortion; if its proportions do not fit the page, the remaining
+	space is filled with white rather than cropping the artwork.
+
+The `Lossless` option creates PNG/TIFF page images without JPEG loss. `JPEG alta` uses
+high-quality JPEG pages. PDF output is rasterized at 8 bits per channel; the 16-bit
+selection is accepted for workflow compatibility but normalized to 8 bits by the PDF
+encoder.
 
 ## Output presets
 

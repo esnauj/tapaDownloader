@@ -464,7 +464,8 @@ class App:
         marco = ttk.Frame(parent, style="Card.TFrame")
         marco.pack(fill="both", expand=True)
         cols = ("archivo", "resolucion", "dpi", "calidad", "ruta")
-        self.col_tree = ttk.Treeview(marco, columns=cols, show="headings", style="Compact.Treeview")
+        self.col_tree = ttk.Treeview(marco, columns=cols, show="headings", style="Compact.Treeview",
+                         selectmode="extended")
         for col, texto, ancho, estira in (
             ("archivo", "Archivo", 250, False), ("resolucion", "Resolución", 90, False),
             ("dpi", "DPI", 55, False), ("calidad", "Calidad", 150, False),
@@ -484,6 +485,8 @@ class App:
         ttk.Button(pie, text="Abrir imagen", command=self.abrir_coleccion).pack(side="left")
         ttk.Button(pie, text="Mostrar carpeta", command=lambda: self.abrir_coleccion(True)).pack(
             side="left", padx=8)
+        ttk.Button(pie, text="Generar PDF", style="Accent.TButton",
+                   command=self.exportar_pdf_coleccion).pack(side="right")
 
     def refrescar_coleccion(self):
         carpeta = Path(self.cfg["directorio"])
@@ -529,6 +532,81 @@ class App:
             return
         ruta = self._coleccion_resultados[int(sel[0])]["ruta"]
         (mostrar_en_carpeta if carpeta else abrir_ruta)(ruta)
+
+    def exportar_pdf_coleccion(self):
+        seleccion = self.col_tree.selection()
+        if not seleccion:
+            messagebox.showwarning("Generar PDF", "Seleccioná al menos una portada.")
+            return
+
+        win = tk.Toplevel(self.root)
+        win.title("Generar PDF para impresión")
+        win.transient(self.root)
+        win.resizable(False, False)
+        cont = ttk.Frame(win, padding=16)
+        cont.pack(fill="both", expand=True)
+        vars_pdf = {
+            "papel": tk.StringVar(value="A4"),
+            "color": tk.StringVar(value="RGB"),
+            "profundidad": tk.StringVar(value="8 bits"),
+            "resolucion": tk.StringVar(value="300"),
+            "compresion": tk.StringVar(value="Sin pérdida"),
+            "sangrado": tk.StringVar(value="0"),
+        }
+        campos = (
+            ("Tamaño de hoja", "papel", list(PAPELES_PDF)),
+            ("Formato de color", "color", COLORES_PDF),
+            ("Profundidad", "profundidad", PROFUNDIDADES_PDF),
+            ("Resolución (DPI)", "resolucion", ["150", "300", "600"]),
+            ("Compresión", "compresion", COMPRESIONES_PDF),
+        )
+        for fila, (texto, clave, valores) in enumerate(campos):
+            ttk.Label(cont, text=texto).grid(row=fila, column=0, sticky="w", pady=5)
+            ttk.Combobox(cont, textvariable=vars_pdf[clave], values=valores,
+                         state="readonly", width=22).grid(row=fila, column=1, sticky="w", padx=(14, 0))
+        ttk.Label(cont, text="Sangrado (mm)").grid(row=len(campos), column=0, sticky="w", pady=5)
+        ttk.Spinbox(cont, from_=0, to=50, increment=0.5, textvariable=vars_pdf["sangrado"],
+                    width=8).grid(row=len(campos), column=1, sticky="w", padx=(14, 0))
+        ttk.Label(cont, text="La portada ocupa todo el ancho disponible y conserva su proporción.",
+                  style="Muted.TLabel").grid(row=len(campos) + 1, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        ttk.Label(cont, text="16 bits se normaliza a 8 bits por canal al crear el PDF.",
+                  style="Muted.TLabel").grid(row=len(campos) + 2, column=0, columnspan=2, sticky="w")
+
+        def generar():
+            try:
+                resolucion = int(vars_pdf["resolucion"].get())
+                sangrado = float(vars_pdf["sangrado"].get().replace(",", "."))
+            except ValueError:
+                messagebox.showwarning("Generar PDF", "Resolución y sangrado deben ser numéricos.", parent=win)
+                return
+            ruta_salida = filedialog.asksaveasfilename(
+                parent=win, title="Guardar PDF", initialdir=self.cfg["directorio"],
+                initialfile="portadas.pdf", defaultextension=".pdf",
+                filetypes=[("PDF", "*.pdf"), ("Todos los archivos", "*.*")])
+            if not ruta_salida:
+                return
+            rutas = [self._coleccion_resultados[int(i)]["ruta"] for i in seleccion]
+            opciones = dict(papel=vars_pdf["papel"].get(), color=vars_pdf["color"].get(),
+                            profundidad=vars_pdf["profundidad"].get(), resolucion=resolucion,
+                            compresion=vars_pdf["compresion"].get(), sangrado_mm=sangrado)
+            win.destroy()
+            self.v_estado.set("Generando PDF...")
+
+            def trabajo():
+                try:
+                    informe = generar_pdf_portadas(rutas, Path(ruta_salida), **opciones)
+                    mensaje = (f"PDF generado: {informe['paginas']} páginas, "
+                               f"{informe['papel']} a {informe['resolucion']} DPI")
+                    self.ui(self.v_estado.set, mensaje)
+                except Exception as error:
+                    self.ui(self.v_estado.set, f"Error al generar PDF: {mensaje_error(error)}")
+            self.hilo(trabajo)
+
+        botones = ttk.Frame(cont)
+        botones.grid(row=len(campos) + 3, column=0, columnspan=2, sticky="e", pady=(16, 0))
+        ttk.Button(botones, text="Cancelar", command=win.destroy).pack(side="right")
+        ttk.Button(botones, text="Generar", style="Accent.TButton", command=generar).pack(side="right", padx=(0, 8))
+        win.grab_set()
 
     # ---- panel de opciones + barra de estado
     def _panel_opciones(self, parent):

@@ -34,6 +34,7 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tkfont
 
 import requests
+import img2pdf
 from PIL import Image, ImageOps, ImageTk
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -55,6 +56,10 @@ TAMANOS = ["Original", "1200 px", "500 px", "250 px"]
 FORMATOS = ["Original", "JPG", "PNG"]
 SI_EXISTE = ["Renombrar", "Omitir", "Sobrescribir"]
 TIPOS_BUSQUEDA = {"Todos": None, "Álbumes": "album", "EPs": "ep", "Singles": "single"}
+PAPELES_PDF = {"A4": (210, 297), "A3": (297, 420)}
+COLORES_PDF = ["RGB", "CMYK", "Escala de grises"]
+PROFUNDIDADES_PDF = ["8 bits", "16 bits"]
+COMPRESIONES_PDF = ["Sin pérdida", "JPEG alta"]
 
 DEFAULTS = {
     "directorio": str(Path.home() / "Pictures" / "Portadas"),
@@ -275,6 +280,71 @@ def preparar_para_impresion(datos: bytes, formato: str) -> tuple[bytes, str]:
         salida = io.BytesIO()
         imagen.save(salida, "PNG", optimize=True, dpi=(300, 300))
         return salida.getvalue(), ".png"
+
+
+def generar_pdf_portadas(
+    rutas: list[Path],
+    destino: Path,
+    papel: str = "A4",
+    color: str = "RGB",
+    profundidad: str = "8 bits",
+    resolucion: int = 300,
+    compresion: str = "Sin pérdida",
+    sangrado_mm: float = 0,
+) -> dict:
+    """Genera una página por portada, ajustada al ancho de la hoja."""
+    if not rutas:
+        raise ValueError("No hay portadas seleccionadas.")
+    if papel not in PAPELES_PDF or color not in COLORES_PDF or profundidad not in PROFUNDIDADES_PDF:
+        raise ValueError("Configuración de PDF no válida.")
+    if compresion not in COMPRESIONES_PDF:
+        raise ValueError("Compresión de PDF no válida.")
+    if resolucion < 72 or resolucion > 1200:
+        raise ValueError("La resolución debe estar entre 72 y 1200 DPI.")
+    if sangrado_mm < 0 or sangrado_mm > 50:
+        raise ValueError("El sangrado debe estar entre 0 y 50 mm.")
+
+    ancho_mm, alto_mm = PAPELES_PDF[papel]
+    ancho_mm += sangrado_mm * 2
+    alto_mm += sangrado_mm * 2
+    ancho_px = round(ancho_mm / 25.4 * resolucion)
+    alto_px = round(alto_mm / 25.4 * resolucion)
+    modo = {"RGB": "RGB", "CMYK": "CMYK", "Escala de grises": "L"}[color]
+    extension = ".jpg" if compresion == "JPEG alta" else (".tif" if color == "CMYK" else ".png")
+    paginas = []
+
+    with tempfile.TemporaryDirectory(prefix="tapa_pdf_") as temporal:
+        for indice, ruta in enumerate(rutas):
+            with Image.open(ruta) as original:
+                imagen = original.convert(modo)
+                imagen.thumbnail((ancho_px, alto_px), Image.Resampling.LANCZOS)
+                fondo = 255 if modo != "CMYK" else (0, 0, 0, 0)
+                pagina = Image.new(modo, (ancho_px, alto_px), fondo)
+                pagina.paste(imagen, ((ancho_px - imagen.width) // 2, (alto_px - imagen.height) // 2))
+                pagina_ruta = Path(temporal) / f"pagina_{indice:04d}{extension}"
+                if extension == ".jpg":
+                    pagina.save(pagina_ruta, "JPEG", quality=95, subsampling=0, dpi=(resolucion, resolucion))
+                elif extension == ".tif":
+                    pagina.save(pagina_ruta, "TIFF", compression="raw", dpi=(resolucion, resolucion))
+                else:
+                    pagina.save(pagina_ruta, "PNG", compress_level=0, dpi=(resolucion, resolucion))
+                paginas.append(pagina_ruta)
+
+        destino.parent.mkdir(parents=True, exist_ok=True)
+        pdf = img2pdf.convert(
+            [str(pagina) for pagina in paginas],
+            layout_fun=img2pdf.get_fixed_dpi_layout_fun((resolucion, resolucion)),
+        )
+        escribir_atomico(destino, pdf)
+
+    return {
+        "paginas": len(rutas),
+        "papel": papel,
+        "resolucion": resolucion,
+        "tamano_px": f"{ancho_px}x{alto_px}",
+        "profundidad": "8 bits por canal",
+        "profundidad_solicitada": profundidad,
+    }
 
 
 def tamano_legible(n: int) -> str:

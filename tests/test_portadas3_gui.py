@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from PIL import Image
+import pikepdf
 
 import portadas_gui as app
 
@@ -72,6 +73,28 @@ class Portadas3Tests(unittest.TestCase):
 
             self.assertEqual(len(resultados), 1)
             self.assertEqual(resultados[0]["dim"], "4000x4000")
+
+    def test_generar_pdf_crea_una_pagina_por_portada_y_aplica_sangrado(self):
+        with tempfile.TemporaryDirectory() as temporal:
+            carpeta = Path(temporal)
+            rutas = []
+            for indice, color in enumerate(("red", "blue")):
+                ruta = carpeta / f"portada_{indice}.png"
+                Image.new("RGB", (400, 300), color).save(ruta)
+                rutas.append(ruta)
+
+            salida = carpeta / "portadas.pdf"
+            informe = app.generar_pdf_portadas(
+                rutas, salida, papel="A4", resolucion=72, sangrado_mm=5,
+                profundidad="16 bits")
+
+            self.assertEqual(informe["paginas"], 2)
+            self.assertEqual(informe["profundidad"], "8 bits por canal")
+            with pikepdf.open(salida) as pdf:
+                self.assertEqual(len(pdf.pages), 2)
+                ancho, alto = [float(valor) for valor in pdf.pages[0].MediaBox[2:]]
+                self.assertEqual(ancho, round(220 / 25.4 * 72))
+                self.assertEqual(alto, round(307 / 25.4 * 72))
 
     def test_ruta_duplicada_usa_huella_del_historial(self):
         historial = [{"ruta": "anterior.png", "huella": "abc"}]
