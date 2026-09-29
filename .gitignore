@@ -1,0 +1,23 @@
+# Entorno virtual y caches
+.venv/
+tapaDownloader.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Configuracion y datos locales
+*.local.json
+historial.json
+DescargadorPortadas/
+
+# Salidas generadas
+portadas/
+descargas/
+*.part
+*.log
+
+# IDE y sistema operativo
+.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
